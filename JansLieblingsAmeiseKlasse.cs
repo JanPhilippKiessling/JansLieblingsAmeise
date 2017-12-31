@@ -44,7 +44,11 @@ namespace AntMe.Player.JansLieblingsAmeise
     {
         bool bLockedOnAmeise = false;
         Ameise BuddyLockedTo;
-        
+        teDistanceControlState DistanceControlState;
+        int TicksSinceBirth = 0;
+        int DistanceControler_StartZeitMessung = 0;
+
+
         enum teEntdeckung
         {
             eFreundliche_Ameise_Gefunden,
@@ -100,6 +104,144 @@ namespace AntMe.Player.JansLieblingsAmeise
         {
         }
 
+
+        enum teDistanceControlState
+        {
+            Starte_EntferungsMessung,
+            Messe_Entferung,
+            BewegeVonAmeiseWeg,
+            BewegeAufAmeiseZu,
+            WarteWaehrendDieAmeiseLaeuft,
+            ende,
+        };
+
+        public int GetSysTime()
+        {
+            return TicksSinceBirth;
+        }
+
+        private void vFsm_ControlDistanceToLockedBuddys()
+        {
+            /*
+           bLockedOnAmeise 
+           BuddyLockedTo;
+           */
+            /*
+                @startuml 
+
+parse das hier zeile für zeile und suche "A -> B : C"  raus um Zustandübergänge mit (kommentar) Bedingungen zu generieren
+Wenn nur A : D da steht, kommt das als kommentar in den case
+das enum kann dazu auch gleich generiert werden, indem man alles hinter -> und vor : bzw \n einmal nimmt
+
+                title Abstand zu den anderen Ameisen regeln
+                [*] --> Starte_EntferungsMessung
+
+                Starte_EntferungsMessung: MoveTo(BuddyAmeise)
+
+                Starte_EntferungsMessung -> Messung_Entferung
+
+                Messe_Entferung -> BewegeAufAmeiseZu: Abstand >= 20
+                Messe_Entferung -> BewegeVonAmeiseWeg: Abstand <= 15
+                Messe_Entferung -> ende : 15 < Abstand < 20
+
+                BewegeVonAmeiseWeg: Turn(180 degree)
+
+                BewegeAufAmeiseZu -> WarteWaehrendDieAmeiseLaeuft
+                BewegeVonAmeiseWeg -> WarteWaehrendDieAmeiseLaeuft
+
+                WarteWaehrendDieAmeiseLaeuft -> Starte_Messung : 5 Ticks vorbei
+
+                ende: BuddyAmeise = NextBuddyAmeise
+                
+                @enduml
+             * */
+
+            // das gehört eigentlich in ein eigenes objekt, dann könnte ich auch jeder locked Ameise einen eigenen regler zuordnen!
+            if (bLockedOnAmeise)     // defensive programming
+            {
+                switch (DistanceControlState)
+                {
+                    case teDistanceControlState.Starte_EntferungsMessung:
+                    {
+                        DistanceControler_StartZeitMessung = GetSysTime();
+                        GeheZuZiel(GetLockedBuddy_CurrentlyControllingDistanceFor());
+                        DistanceControlState = teDistanceControlState.Messe_Entferung;
+                    }
+                    break;
+
+                    case teDistanceControlState.Messe_Entferung:
+                    {
+                        /*
+                        if (GetSysTime() - DistanceControler_StartZeitMessung >= 3)
+                        {
+                            if ( RestStrecke >= 20 )
+                            {
+                                DistanceControlState = teDistanceControlState.BewegeAufAmeiseZu;
+                            } 
+                            else if (RestStrecke <= 15)
+                            {
+                                DistanceControlState = teDistanceControlState.BewegeVonAmeiseWeg;
+                            }
+                            else
+                            {
+                                DistanceControlState = teDistanceControlState.ende;
+                            }
+                        }*/
+                    }
+                    break;
+
+                    case teDistanceControlState.BewegeVonAmeiseWeg:
+                    {
+                        GeheZuZiel(GetLockedBuddy_CurrentlyControllingDistanceFor());
+                        DreheUmWinkel(180);
+                        DistanceControler_StartZeitMessung = GetSysTime();
+                        DistanceControlState = teDistanceControlState.WarteWaehrendDieAmeiseLaeuft;
+                    }
+                    break;
+
+                    case teDistanceControlState.BewegeAufAmeiseZu:
+                    {
+                        GeheZuZiel(GetLockedBuddy_CurrentlyControllingDistanceFor());
+                        DistanceControler_StartZeitMessung = GetSysTime();
+                        DistanceControlState = teDistanceControlState.WarteWaehrendDieAmeiseLaeuft;
+                    }
+                    break;
+
+                    case teDistanceControlState.WarteWaehrendDieAmeiseLaeuft:
+                    {
+                        if (GetSysTime() - DistanceControler_StartZeitMessung >= 5)
+                        {
+                            DistanceControlState = teDistanceControlState.Starte_EntferungsMessung;
+                        }
+                    }
+                    break;
+
+                    case teDistanceControlState.ende:
+                    {
+                        SwitchToNextLockedBuddy_CurrentlyControllingDistanceFor();
+                    }
+                    break;
+
+                    default:
+                    {
+
+                    }break;
+                }
+            }
+            return;
+        }
+
+        private void SwitchToNextLockedBuddy_CurrentlyControllingDistanceFor()
+        {
+            return; // hier wird spaeter die Liste eins weiter geschaltet
+        }
+
+
+        private Ameise GetLockedBuddy_CurrentlyControllingDistanceFor()
+        {
+            return BuddyLockedTo;
+        }
+
         /// <summary>
         /// Diese Methode wird in jeder Simulationsrunde aufgerufen - ungeachtet von zusätzlichen 
         /// Bedingungen. Dies eignet sich für Aktionen, die unter Bedingungen ausgeführt werden 
@@ -108,29 +250,12 @@ namespace AntMe.Player.JansLieblingsAmeise
         /// </summary>
         public override void Tick()
         {
-            bool bLockedOnAmeise = false;
-            Ameise BuddyLockedTo;
+            TicksSinceBirth++;
+            if (bLockedOnAmeise)
+            {
+                vFsm_ControlDistanceToLockedBuddys();
+            }
 
-            /*
-                @startuml
-
-                title Abstand zu den anderen Ameisen regeln
-                [*] --> Starte_Messung
-
-                Starte_Messung: GetNaechsteLockedAmeise()\nMoveTo(Ameise)
-
-                Starte_Messung -> Messung_beendet: Messung läuft seit  >= 3 ticks
-
-                Messung_beendet -> BewegeAufAmeiseZu: Abstand >= 20
-                Messung_beendet -> BewegeVonAmeiseWeg: Abstand <= 15
-                Messung_beendet -> ende : 15 < Abstand < 20
-
-                BewegeVonAmeiseWeg: Turn(180 degree)
-
-                BewegeAufAmeiseZu -> ende:  Entfernung <=  15 
-                BewegeVonAmeiseWeg -> ende: Entfernung >= 20
-                @enduml
-             * */
         }
 
         #endregion
@@ -230,7 +355,6 @@ namespace AntMe.Player.JansLieblingsAmeise
                 bLockedOnAmeise = true;
                 BuddyLockedTo = ameise;
             }
-
         }
 
         /// <summary>
